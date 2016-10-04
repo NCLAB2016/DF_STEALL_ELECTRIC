@@ -11,7 +11,7 @@ This folder contains data-processing source and model define code of LIAO, which
 `extract_users.py`: 提取总用户数据中指定用户ID的所有数据。例如：提取训练集中所有用户ID的用电情况数据。另外，日期被转换成自2015/1/1始经过的天数，例如：2015/1/1被转换成整数0,2015/1/2被转换成整数1。最后生成的文件部分数据如下：
 
 
-`
+```
 CONS_NO,DATA_DATE,KWH_READING,KWH,LABEL
 0114314033,11,3525.2000,5.7600,0
 1742440062,11,3097.1900,5.7800,0
@@ -47,4 +47,4 @@ CONS_NO,DATA_DATE,KWH_READING,KWH,LABEL
 1600100023,11,0.0000,0.0000,0
 5600100023,11,316.3400,0.9600,0
 
-`
+```
