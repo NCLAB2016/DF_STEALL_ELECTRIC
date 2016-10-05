@@ -8,7 +8,7 @@ Detail: Extract all users' information such as, DATA_DATE,
 
 Author: LIAO
 
-Version: V1.0 2016/10/4
+Version: V1.1 2016/10/5
 
 Copyright(c) 2016, NCLAB All rights reserved
 --------------------------------------------------------------
@@ -26,6 +26,9 @@ test_data_filename = dataset + 'test.csv'
 extracted_train_user_data_filename = dataset + 'train_data.csv'
 extracted_test_user_data_filename = dataset + 'test_data.csv'
 
+stretch_train_data_filename = dataset + 'train_stretch.csv'
+stretch_test_data_filename = dataset + 'test_stretch.csv'
+
 import csv
 
 
@@ -37,7 +40,7 @@ def get_data_and_label(filename):
     reader = csv.reader(csvfile)
     # train/val data which must contains data and label
     for row in reader:
-       data2label[row[0]] = row[1]
+       data2label[row[0]] = row[1] if len(row) > 1 else ''
   return data2label 
 
 
@@ -63,7 +66,7 @@ def transform_date(ori_date):
   return (now_date - start_date).days
 
 
-def extract_my_data(data2label, info_filename, dest_filename):
+def extract_to_file(data2label, info_filename, dest_filename):
   """ 
      Extract all users' data in data2label from file 'filename',
      transform the date(@see #transform_date), and write data 
@@ -95,8 +98,73 @@ def extract_my_data(data2label, info_filename, dest_filename):
         line_no += 1
         if not line_no % 1000000: print('solved ' + str(line_no) + ' lines now.')
 
+
+DAYS_OF_YEAR = 365
+def extract_data(filename, data2label):
+  """
+     Extract data to an array, which stretch one user to a line
+  """
+  user_data = dict()
+  line_no = 0 # line number, for prompt
+  user_dup = dict()
+  with open(filename, 'rb') as csvfile:
+    reader = csv.reader(csvfile)
+    for row in reader:
+      if row[0] in data2label:
+        user_line = user_data.get(row[0], None)
+        escape_days = transform_date(row[1])
+        if user_line == None:
+          user_line = [-1] * DAYS_OF_YEAR
+          user_data[row[0]] = user_line
+        if user_line[escape_days] != -1:
+          if row[0] in user_dup: user_dup[row[0]] = user_dup[row[0]] + 1
+          else: user_dup[row[0]] = 1
+          #print ("Warning: "+row[0]+" duplicate data of date: "+row[1]+" label:"+data2label[row[0]])
+        try:
+          user_line[escape_days] = float(row[2]) # just today's end value
+        except TypeError:
+          pass
+        except ValueError:
+          pass
+        except Exception, e:
+          pass
+        else:
+          pass
+      line_no += 1
+      if not line_no % 1000000: print('solved ' + str(line_no) + ' lines now.')
+#  for key in user_dup:
+#    print ("User " + key + ": " + str(user_dup[key]))
+#  print ("total number of dup: " + str(len(user_dup)))
+  return user_data
+        
+
+def write_data(user_data, data2label, filename):
+  with open(filename, 'wb') as csvfile:
+    writer = csv.writer(csvfile, quoting=csv.QUOTE_NONE)
+    for key in user_data:
+      user_line = user_data[key]
+      line = list()
+      line.append(key)
+      for i in user_line: line.append(str(i))
+      line.append(data2label[key])
+      writer.writerow(line)
+    
+
 if __name__ == "__main__":
-  data2label=get_data_and_label(train_data_filename)
   print ("extracted users' infos of train data now...")
-  extract_my_data(data2label, user_data_filename, extracted_train_user_data_filename) 
-  print ("Over: user data are stored in " + extracted_train_user_data_filename)
+  data2label=get_data_and_label(train_data_filename)
+  ''' Uncomment to extract train/test data and write to file '''
+  #extract_to_file(data2label, user_data_filename, extracted_train_user_data_filename) 
+  #print ("Over: user data are stored in " + extracted_train_user_data_filename)
+  user_data = extract_data(user_data_filename, data2label)
+  write_data(user_data, data2label, stretch_train_data_filename)
+
+
+  print ("extracted users' infos of test data now...")
+  data2label=get_data_and_label(test_data_filename)
+  user_data = extract_data(user_data_filename, data2label)
+  write_data(user_data, data2label, stretch_test_data_filename)
+  #data2label=get_data_and_label(test_data_filename)
+  #extract_to_file(data2label, user_data_filename, extracted_test_user_data_filename) 
+  #print ("Over: user data are stored in " + extracted_test_user_data_filename)
+  
