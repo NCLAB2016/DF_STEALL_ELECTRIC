@@ -1,13 +1,14 @@
-dataset = '/media/dat1/liao/dataset/'
+dataset = '/media/dat1/liao/dataset/new_new_try/'
 
-user_data_filename = dataset + 'all_user_yongdian_data_2015.csv'
+user_data_filename =  '/media/dat1/liao/dataset/all_user_yongdian_data_2015.csv'
 stretch_all_data_raw_filename = dataset + 'all_stretch_raw.csv'
 stretch_all_data_filename = dataset + 'all_stretch.csv'
 stretch_interp_all_data_filename = dataset + 'all_interp_stretch.csv'
-train_set_filename = dataset + 'train.csv'
-test_set_filename = dataset + 'test.csv'
-dest_train_filename = dataset + 'train_data.csv'
-dest_test_filename = dataset + 'test_data.csv'
+statistics_all_data_filename = dataset + 'all_statis_stretch.csv'
+train_set_filename = '/media/dat1/liao/dataset/train.csv'
+test_set_filename = '/media/dat1/liao/dataset/test.csv'
+dest_train_filename = dataset + 'train__data.csv'
+dest_test_filename = dataset + 'test__data.csv'
 
 import datetime
 start_date = datetime.datetime(2015, 1, 1) # for calculating date delta
@@ -59,11 +60,14 @@ def extract_data(filename):
       line = all_data.get(row[0], None)
       escape_days = transform_date(row[1])
       if line == None:
-        line = [-1] * DAYS_OF_YEAR
+        line = [0] * DAYS_OF_YEAR + [-1] * DAYS_OF_YEAR
         all_data[row[0]] = line
-      f_value = to_float(row[2])
-      if f_value > line[escape_days]:
-        line[escape_days] = f_value
+      f_start = to_float(row[3])
+      f_delta = to_float(row[4])
+      if f_start > line[escape_days]:
+        line[escape_days] = f_start
+      if f_delta > line[escape_days+DAYS_OF_YEAR]:
+        line[escape_days+DAYS_OF_YEAR] = f_delta
       line_no += 1
       if not line_no % 1000000: print('solved ' + str(line_no) + ' lines now.')
   return all_data
@@ -95,13 +99,14 @@ def write_to_file(all_data, filename):
 
 
 import numpy as np
+from sklearn.preprocessing import Imputer
 def do_interp(all_data):
   for key in all_data:
     value = all_data[key]
     x = list()
     xp = list()
     fp = list()
-    for i in range(len(value)):
+    for i in range(DAYS_OF_YEAR): # start_value
       if value[i] == -1 or value[i] == 0: x.append(i)
       else:
         xp.append(i)
@@ -110,45 +115,34 @@ def do_interp(all_data):
       y = np.interp(x, xp, fp)
       for i in range(len(x)):
         value[x[i]] = y[i]
-    
+    # delta value: impute with most frequence value
+    delta_value = value[DAYS_OF_YEAR:]
+    if sum(np.array(delta_value) == -1) != len(delta_value):
+      imp = Imputer(missing_values=-1, strategy='most_frequent', axis=1)
+      delta_value = imp.fit(delta_value).transform(delta_value)
+      value[DAYS_OF_YEAR:] = delta_value[0][:].tolist()
+
 
 import math
 def gene_train_set(train_filename, user_data, train_dest):
   train_uid = list()
   train_data = list()
   train_label = list()
-#  do_not_use_uid = list()
-#  do_not_use_data = list()
-#  do_not_use_label = list()
   with open(train_filename, 'rb') as rcsvfile:
     reader = csv.reader(rcsvfile)
     with open(train_dest, 'wb') as wcsvfile:
       writer = csv.writer(wcsvfile, quoting=csv.QUOTE_NONE)
       for row in reader:
         line = user_data.get(row[0], None)
-        if line == None or math.fsum(line) <= 0.0:
-#          do_not_use_uid.append(row[0])
-#          do_not_use_data.append([-1]*DAYS_OF_YEAR if line==None else line)
-#          do_not_use_label.append(0 if line == None else row[1])
+        if line == None or math.fsum(line) < 0.0:
           pass
         else:
           train_uid.append(row[0])
           train_data.append(line)
           train_label.append(int(row[1]))
-          train_line = list()
-          train_line.append(row[0])
-          train_line.extend(line)
-          train_line.append(row[1])
-          writer.writerow(train_line)
-#  with open(dataset + 'do_not_use_data.csv', 'wb') as csvfile:
-#    writer = csv.writer(csvfile, quoting=csv.QUOTE_NONE)
-#    for i in range(len(do_not_use_uid)):
-#      do_not_use_line = list()
-#      do_not_use_line.append(do_not_use_uid[i])
-#      do_not_use_line.extend(do_not_use_data[i])
-#      do_not_use_line.append(do_not_use_label[i]) 
-#      writer.writerow(do_not_use_line)
+          writer.writerow(line)
   return train_uid, train_data, train_label
+
 
 def gene_test_set(test_filename, all_data, dest_filename):
   test_uid = list()
@@ -160,22 +154,76 @@ def gene_test_set(test_filename, all_data, dest_filename):
       writer = csv.writer(wcsvfile, quoting=csv.QUOTE_NONE)
       for row in reader:
         line = all_data.get(row[0], None)
-        if line == None or math.fsum(line) <= 0.0:
+        if line == None:# or math.fsum(line) <= 0.0:
           do_not_use_uid.append(row[0])
         else:
           test_uid.append(row[0])
           test_data.append(line)
           writer.writerow(line)
-  with open(dataset+'test_no_use.csv', 'wb') as csvfile:
-    writer = csv.writer(csvfile, quoting=csv.QUOTE_NONE)
-    for i in do_not_use_uid:
-      writer.writerow([i, ''])
+  with open(dataset+'test_no_use.csv', 'w') as f:
+    for i in range(len(do_not_use_uid)):
+      f.write(do_not_use_uid[i] + '\n')
   return test_uid, test_data
+
 
 from six.moves import cPickle as pickle
 def write_to_pickle(data, filename):
   with open(filename, 'wb') as f:
     pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
+
+
+def add_statis(data):
+  all_data = np.array(data)
+  # start value
+  start_mean_value = np.mean(all_data[:DAYS_OF_YEAR], axis=1)
+  start_min_value = np.amin(all_data[:DAYS_OF_YEAR], axis=1)
+  start_max_value = np.amax(all_data[:DAYS_OF_YEAR], axis=1)
+  start_range_value = np.ptp(all_data[:DAYS_OF_YEAR], axis=1)
+  start_quart_value = np.percentile(all_data[:DAYS_OF_YEAR], 25, axis=1)
+  start_half_value = np.percentile(all_data[:DAYS_OF_YEAR], 50, axis=1)
+  start_fif_value = np.percentile(all_data[:DAYS_OF_YEAR], 75, axis=1)
+  start_median_value = np.median(all_data[:DAYS_OF_YEAR], axis=1)
+  start_std_value = np.std(all_data[:DAYS_OF_YEAR], axis=1)
+  start_var_value = np.var(all_data[:DAYS_OF_YEAR], axis=1)
+  start_special_value = start_mean_value / start_std_value
+  # delta value
+  delta_mean_value = np.mean(all_data[DAYS_OF_YEAR:], axis=1)
+  delta_min_value = np.amin(all_data[DAYS_OF_YEAR:], axis=1)
+  delta_max_value = np.amax(all_data[DAYS_OF_YEAR:], axis=1)
+  delta_range_value = np.ptp(all_data[DAYS_OF_YEAR:], axis=1)
+  delta_quart_value = np.percentile(all_data[DAYS_OF_YEAR:], 25, axis=1)
+  delta_half_value = np.percentile(all_data[DAYS_OF_YEAR:], 50, axis=1)
+  delta_fif_value = np.percentile(all_data[DAYS_OF_YEAR:], 75, axis=1)
+  delta_median_value = np.median(all_data[DAYS_OF_YEAR:], axis=1)
+  delta_std_value = np.std(all_data[DAYS_OF_YEAR:], axis=1)
+  delta_var_value = np.var(all_data[DAYS_OF_YEAR:], axis=1)
+  delta_special_value = delta_mean_value / delta_std_value
+  # add to data
+  all_data = np.column_stack((all_data, start_mean_value))
+  all_data = np.column_stack((all_data, start_min_value))
+  all_data = np.column_stack((all_data, start_max_value))
+  all_data = np.column_stack((all_data, start_range_value))
+  all_data = np.column_stack((all_data, start_quart_value))
+  all_data = np.column_stack((all_data, start_half_value))
+  all_data = np.column_stack((all_data, start_fif_value))
+  all_data = np.column_stack((all_data, start_median_value))
+  all_data = np.column_stack((all_data, start_std_value))
+  all_data = np.column_stack((all_data, start_var_value))
+  all_data = np.column_stack((all_data, start_special_value))
+  
+  all_data = np.column_stack((all_data, delta_mean_value))
+  all_data = np.column_stack((all_data, delta_min_value))
+  all_data = np.column_stack((all_data, delta_max_value))
+  all_data = np.column_stack((all_data, delta_range_value))
+  all_data = np.column_stack((all_data, delta_quart_value))
+  all_data = np.column_stack((all_data, delta_half_value))
+  all_data = np.column_stack((all_data, delta_fif_value))
+  all_data = np.column_stack((all_data, delta_median_value))
+  all_data = np.column_stack((all_data, delta_std_value))
+  all_data = np.column_stack((all_data, delta_var_value))
+  all_data = np.column_stack((all_data, delta_special_value))
+  return all_data.tolist()
+
 
 if __name__ == '__main__':
   print("Extract data from all user dataset now...")
@@ -200,4 +248,4 @@ if __name__ == '__main__':
   write_to_pickle(np.array(train_label),dataset + 'train_label.pickle')
   write_to_pickle(np.array(test_data), dataset+'test_data.pickle')
   write_to_pickle(test_uid, dataset+'test_uid.pickle')
-
+  print("\nDone.")
